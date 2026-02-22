@@ -1,0 +1,882 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sistema de Monitoreo Ambiental – Cuenca del Río Tambo</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:ital,wght@0,400;0,700;1,400&family=DM+Sans:wght@300;400;500;700&family=Oswald:wght@400;500;700&display=swap');
+
+  :root {
+    --bg:        #04080f;
+    --bg2:       #080d18;
+    --bg-card:   rgba(8,18,38,0.82);
+    --blue:      #1E90FF;
+    --blue-dim:  #1565C0;
+    --aqua:      #00BCD4;
+    --teal:      #00897B;
+    --red:       #EF5350;
+    --red-dark:  #B71C1C;
+    --amber:     #FFA726;
+    --green:     #26A69A;
+    --lime:      #C6FF00;
+    --white:     #E8F0FE;
+    --dim:       #7B8EC8;
+    --border:    rgba(30,144,255,0.14);
+    --border2:   rgba(0,188,212,0.18);
+    --glow-blue: 0 0 18px rgba(30,144,255,0.45);
+    --glow-red:  0 0 18px rgba(239,83,80,0.5);
+    --glow-aqua: 0 0 18px rgba(0,188,212,0.4);
+  }
+
+  *{margin:0;padding:0;box-sizing:border-box;}
+
+  html,body{
+    width:100vw;height:100vh;
+    background:var(--bg);
+    font-family:'DM Sans',sans-serif;
+    color:var(--white);
+    overflow:hidden;
+  }
+
+  /* fondo técnico */
+  body::before{
+    content:'';position:fixed;inset:0;
+    background-image:
+      radial-gradient(circle at 15% 50%, rgba(30,144,255,0.06) 0%,transparent 55%),
+      radial-gradient(circle at 85% 20%, rgba(0,188,212,0.05) 0%,transparent 45%),
+      radial-gradient(circle at 60% 80%, rgba(38,166,154,0.04) 0%,transparent 40%),
+      linear-gradient(rgba(30,144,255,0.018) 1px,transparent 1px),
+      linear-gradient(90deg,rgba(30,144,255,0.018) 1px,transparent 1px);
+    background-size:100% 100%,100% 100%,100% 100%,40px 40px,40px 40px;
+    animation:gridDrift 30s linear infinite;
+    pointer-events:none;z-index:0;
+  }
+  @keyframes gridDrift{0%{background-position:0 0,0 0,0 0,0 0,0 0;}100%{background-position:0 0,0 0,0 0,40px 40px,40px 40px;}}
+
+  .scanline{
+    position:fixed;left:0;right:0;height:2px;
+    background:linear-gradient(transparent,rgba(30,144,255,0.04),transparent);
+    animation:scan 12s linear infinite;pointer-events:none;z-index:999;
+  }
+  @keyframes scan{0%{top:-2px;}100%{top:100vh;}}
+
+  /* ══ GRID PRINCIPAL ══ */
+  .dashboard{
+    position:relative;z-index:1;
+    width:100vw;height:100vh;
+    display:grid;
+    grid-template-columns:230px 1fr 1fr 1fr 1fr 220px;
+    grid-template-rows:64px 1fr 1fr 1fr;
+    gap:6px;padding:8px;
+  }
+
+  /* ══ HEADER ══ */
+  .header{
+    grid-column:1/-1;
+    display:flex;align-items:center;justify-content:space-between;
+    border-bottom:1px solid rgba(30,144,255,0.25);
+    padding-bottom:6px;
+  }
+
+  .brand{display:flex;align-items:center;gap:12px;}
+
+  .logo-box{
+    width:42px;height:42px;
+    border:1.5px solid var(--aqua);
+    border-radius:4px;
+    display:flex;align-items:center;justify-content:center;
+    flex-direction:column;gap:2px;
+    position:relative;overflow:hidden;
+    animation:logoPulse 4s ease-in-out infinite;
+  }
+  .logo-box::before{
+    content:'';position:absolute;inset:0;
+    background:linear-gradient(135deg,rgba(0,188,212,0.1),transparent);
+  }
+  .logo-drop{width:18px;height:22px;position:relative;}
+  .logo-drop::before{
+    content:'';position:absolute;
+    width:12px;height:12px;
+    background:var(--aqua);
+    border-radius:50% 50% 50% 0;
+    transform:rotate(-45deg);
+    top:2px;left:3px;
+    box-shadow:0 0 8px var(--aqua);
+  }
+  @keyframes logoPulse{0%,100%{box-shadow:0 0 8px rgba(0,188,212,0.3);}50%{box-shadow:0 0 22px rgba(0,188,212,0.7),inset 0 0 10px rgba(0,188,212,0.1);}}
+
+  .title-block h1{
+    font-family:'Oswald',sans-serif;
+    font-size:15px;font-weight:700;letter-spacing:3px;
+    color:var(--aqua);text-shadow:var(--glow-aqua);
+  }
+  .title-block p{
+    font-family:'Space Mono',monospace;
+    font-size:9px;color:var(--dim);letter-spacing:3px;
+  }
+
+  .org-badge{
+    display:flex;align-items:center;gap:8px;
+    border:1px solid rgba(30,144,255,0.3);
+    border-radius:3px;padding:4px 12px;
+    font-family:'Space Mono',monospace;font-size:8px;
+    color:var(--blue);letter-spacing:2px;
+  }
+  .org-badge span{color:var(--dim);}
+
+  .hstats{display:flex;gap:18px;align-items:center;}
+  .hs{text-align:center;}
+  .hs-val{
+    font-family:'Oswald',monospace;
+    font-size:19px;font-weight:700;line-height:1;
+  }
+  .hs-val.critical{color:var(--red);text-shadow:var(--glow-red);}
+  .hs-val.warn{color:var(--amber);}
+  .hs-val.ok{color:var(--green);}
+  .hs-val.blue{color:var(--blue);text-shadow:var(--glow-blue);}
+  .hs-val.aqua{color:var(--aqua);}
+  .hs-lbl{font-family:'Space Mono',monospace;font-size:7.5px;color:var(--dim);letter-spacing:2px;}
+  .hsep{width:1px;height:32px;background:var(--border);}
+
+  .live-badge{
+    display:flex;align-items:center;gap:7px;
+    background:rgba(239,83,80,0.08);
+    border:1px solid rgba(239,83,80,0.35);
+    border-radius:20px;padding:5px 14px;
+    font-family:'Space Mono',monospace;font-size:10px;
+    color:var(--red);letter-spacing:2px;
+  }
+  .live-dot{
+    width:7px;height:7px;
+    background:var(--red);border-radius:50%;
+    animation:blink 1.2s ease-in-out infinite;
+    box-shadow:0 0 8px var(--red);
+  }
+  @keyframes blink{0%,100%{opacity:1;}50%{opacity:0.1;}}
+
+  /* ══ PANEL ══ */
+  .panel{
+    background:var(--bg-card);
+    border:1px solid var(--border);
+    border-radius:4px;
+    padding:9px 10px;
+    position:relative;overflow:hidden;
+    backdrop-filter:blur(14px);
+    display:flex;flex-direction:column;
+  }
+  .panel::before{
+    content:'';position:absolute;top:0;left:0;right:0;height:2px;
+    background:linear-gradient(90deg,transparent,var(--blue),transparent);
+    opacity:0.6;
+  }
+  .panel.aqua-t::before{background:linear-gradient(90deg,transparent,var(--aqua),transparent);}
+  .panel.red-t::before{background:linear-gradient(90deg,transparent,var(--red),transparent);}
+  .panel.amber-t::before{background:linear-gradient(90deg,transparent,var(--amber),transparent);}
+  .panel.green-t::before{background:linear-gradient(90deg,transparent,var(--green),transparent);}
+  .panel.lime-t::before{background:linear-gradient(90deg,transparent,var(--lime),transparent);}
+
+  .ctl,.cbr{
+    position:absolute;width:10px;height:10px;
+    border-color:rgba(0,188,212,0.35);border-style:solid;
+  }
+  .ctlbr{position:absolute;width:10px;height:10px;border-color:rgba(239,83,80,0.35);border-style:solid;}
+  .ctlbr.tl{top:4px;left:4px;border-width:1px 0 0 1px;}
+  .ctlbr.br{bottom:4px;right:4px;border-width:0 1px 1px 0;}
+  .ctl{top:4px;left:4px;border-width:1px 0 0 1px;}
+  .cbr{bottom:4px;right:4px;border-width:0 1px 1px 0;}
+
+  .pt{
+    font-family:'Space Mono',monospace;
+    font-size:8px;color:var(--dim);
+    letter-spacing:2.5px;text-transform:uppercase;
+    margin-bottom:7px;
+    display:flex;align-items:center;justify-content:space-between;
+    flex-shrink:0;
+  }
+  .pt .tag{color:var(--aqua);}
+  .pt .tag.red{color:var(--red);}
+  .pt .tag.amber{color:var(--amber);}
+  .pt .tag.lime{color:var(--lime);}
+  .pt .tag.blue{color:var(--blue);}
+
+  .cw{flex:1;position:relative;min-height:0;}
+
+  /* ══ KPI COLUMNA IZQUIERDA ══ */
+  .kpi-col{
+    grid-column:1;grid-row:2/5;
+    display:flex;flex-direction:column;gap:5px;
+  }
+  .kpi-item{
+    flex:1;
+    background:rgba(4,12,28,0.8);
+    border:1px solid var(--border);
+    border-radius:3px;
+    padding:9px 11px;
+    position:relative;overflow:hidden;
+    transition:border-color 0.3s;
+  }
+  .kpi-item:hover{border-color:var(--aqua);}
+  .kpi-item::after{
+    content:'';position:absolute;
+    bottom:0;left:0;height:2px;
+    animation:kpiAnim 6s ease-in-out infinite alternate;
+  }
+  .kpi-item:nth-child(1)::after{background:var(--red);width:82%;}
+  .kpi-item:nth-child(2)::after{background:var(--amber);width:61%;}
+  .kpi-item:nth-child(3)::after{background:var(--amber);width:73%;}
+  .kpi-item:nth-child(4)::after{background:var(--aqua);width:54%;}
+  .kpi-item:nth-child(5)::after{background:var(--amber);width:88%;}
+  .kpi-item:nth-child(6)::after{background:var(--blue);width:43%;}
+  .kpi-item:nth-child(7)::after{background:var(--green);width:67%;}
+  @keyframes kpiAnim{0%{transform:scaleX(0.6);transform-origin:left;}100%{transform:scaleX(1);transform-origin:left;}}
+
+  .kpi-lbl{font-family:'Space Mono',monospace;font-size:7.5px;color:var(--dim);letter-spacing:2px;text-transform:uppercase;}
+  .kpi-val{font-family:'Oswald',monospace;font-size:21px;font-weight:700;line-height:1.1;}
+  .kpi-val.r{color:var(--red);}
+  .kpi-val.a{color:var(--amber);}
+  .kpi-val.b{color:var(--blue);}
+  .kpi-val.q{color:var(--aqua);}
+  .kpi-val.g{color:var(--green);}
+  .kpi-val.w{color:var(--white);}
+  .kpi-unit{font-size:11px;font-weight:400;}
+  .kpi-sub{display:flex;align-items:center;gap:5px;margin-top:2px;}
+  .delta{font-size:8px;font-weight:700;padding:1px 5px;border-radius:2px;}
+  .delta.up{background:rgba(239,83,80,0.15);color:var(--red);}
+  .delta.dn{background:rgba(38,166,154,0.15);color:var(--green);}
+  .delta.nt{background:rgba(30,144,255,0.12);color:var(--blue);}
+  .kpi-desc{font-size:8.5px;color:var(--dim);}
+
+  /* ══ ALERTAS COLUMNA DERECHA ══ */
+  .alerts-col{
+    grid-column:6;grid-row:2/5;
+    display:flex;flex-direction:column;gap:4px;
+  }
+  .alerts-title{
+    font-family:'Space Mono',monospace;font-size:8px;
+    color:var(--dim);letter-spacing:3px;text-transform:uppercase;
+    margin-bottom:2px;flex-shrink:0;
+  }
+  .alert-item{
+    background:rgba(4,12,28,0.8);
+    border-left:3px solid var(--blue);
+    border-radius:0 3px 3px 0;
+    padding:6px 8px;flex-shrink:0;
+  }
+  .alert-item.warn{border-color:var(--amber);}
+  .alert-item.crit{border-color:var(--red);background:rgba(239,83,80,0.06);}
+  .alert-item.ok{border-color:var(--green);}
+  .alert-item.info{border-color:var(--aqua);}
+
+  .alert-type{font-family:'Space Mono',monospace;font-size:7.5px;letter-spacing:1.5px;text-transform:uppercase;}
+  .alert-item .alert-type{color:var(--blue);}
+  .alert-item.warn .alert-type{color:var(--amber);}
+  .alert-item.crit .alert-type{color:var(--red);}
+  .alert-item.ok .alert-type{color:var(--green);}
+  .alert-item.info .alert-type{color:var(--aqua);}
+  .alert-msg{font-size:9.5px;font-weight:500;line-height:1.3;color:var(--white);margin-top:2px;}
+  .alert-time{font-family:'Space Mono',monospace;font-size:7.5px;color:var(--dim);margin-top:2px;}
+
+  /* ══ GAUGE ROW ══ */
+  .gauge-row{display:flex;gap:4px;flex:1;align-items:center;justify-content:space-around;}
+  .gauge-item{text-align:center;flex:1;}
+  .gauge-lbl{font-family:'Space Mono',monospace;font-size:7px;color:var(--dim);letter-spacing:1.5px;text-transform:uppercase;margin-top:3px;line-height:1.3;}
+  .gauge-sub{font-family:'Space Mono',monospace;font-size:7px;color:var(--amber);margin-top:1px;}
+
+  /* ══ TABLE ══ */
+  .mtable{width:100%;border-collapse:collapse;font-size:9px;}
+  .mtable th{
+    color:var(--dim);font-family:'Space Mono',monospace;
+    letter-spacing:1px;text-transform:uppercase;font-size:7.5px;
+    border-bottom:1px solid var(--border);padding:4px 6px;text-align:left;
+  }
+  .mtable td{padding:4px 6px;border-bottom:1px solid rgba(30,144,255,0.05);font-weight:500;font-size:9.5px;}
+  .mtable tr:hover td{background:rgba(30,144,255,0.04);}
+  .sdot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:3px;}
+  .s-g{background:var(--green);box-shadow:0 0 5px var(--green);}
+  .s-y{background:var(--amber);box-shadow:0 0 5px var(--amber);}
+  .s-r{background:var(--red);box-shadow:0 0 5px var(--red);}
+  .s-b{background:var(--blue);box-shadow:0 0 5px var(--blue);}
+
+  /* ══ MINI CARDS ══ */
+  .mini-cards{display:grid;grid-template-columns:1fr 1fr;gap:5px;flex:1;}
+  .mini-card{
+    background:rgba(30,144,255,0.05);
+    border:1px solid rgba(30,144,255,0.15);
+    border-radius:3px;padding:7px 9px;
+    display:flex;flex-direction:column;justify-content:center;
+  }
+  .mc-lbl{font-family:'Space Mono',monospace;font-size:7px;color:var(--dim);letter-spacing:1.5px;text-transform:uppercase;}
+  .mc-val{font-family:'Oswald',monospace;font-size:16px;font-weight:700;line-height:1.2;}
+  .mc-sub{font-family:'Space Mono',monospace;font-size:7.5px;color:var(--dim);}
+
+  /* ══ PBAR ══ */
+  .pbar-wrap{height:4px;background:rgba(255,255,255,0.05);border-radius:2px;margin-top:7px;overflow:hidden;}
+  .pbar-fill{height:100%;border-radius:2px;}
+
+  /* ══ LMP (límite máximo permisible) badge ══ */
+  .lmp-badge{
+    display:inline-flex;align-items:center;gap:4px;
+    font-family:'Space Mono',monospace;font-size:7px;
+    padding:2px 6px;border-radius:2px;letter-spacing:1px;
+    background:rgba(239,83,80,0.12);color:var(--red);
+    border:1px solid rgba(239,83,80,0.3);
+  }
+  .lmp-badge.ok{background:rgba(38,166,154,0.1);color:var(--green);border-color:rgba(38,166,154,0.3);}
+  .lmp-badge.warn{background:rgba(255,167,38,0.1);color:var(--amber);border-color:rgba(255,167,38,0.3);}
+
+  /* año label */
+  #clockLabel{font-family:'Space Mono',monospace;font-size:9px;color:var(--dim);letter-spacing:2px;}
+</style>
+</head>
+<body>
+<div class="scanline"></div>
+
+<div class="dashboard">
+
+<!-- ══════════════ HEADER ══════════════ -->
+<div class="header">
+  <div class="brand">
+    <div class="logo-box">
+      <div class="logo-drop"></div>
+    </div>
+    <div class="title-block">
+      <h1>SISTEMA DE MONITOREO AMBIENTAL — CUENCAS RÍO TAMBO, ASANA Y TORATA</h1>
+      <p>MOQUEGUA / AREQUIPA · IMPACTO MINERO SOBRE RECURSOS HÍDRICOS Y AGRICULTURA · RENDICIÓN DE CUENTAS</p>
+    </div>
+  </div>
+
+  <div class="hstats">
+    <div class="hs">
+      <div class="hs-val critical">127<span style="font-size:11px"> ppb</span></div>
+      <div class="hs-lbl">ARSÉNICO EN AGUA</div>
+    </div>
+    <div class="hsep"></div>
+    <div class="hs">
+      <div class="hs-val warn">62<span style="font-size:11px">%</span></div>
+      <div class="hs-lbl">CAUDAL DISPONIBLE</div>
+    </div>
+    <div class="hsep"></div>
+    <div class="hs">
+      <div class="hs-val warn">3,840<span style="font-size:11px"> Ha</span></div>
+      <div class="hs-lbl">CULTIVOS AFECTADOS</div>
+    </div>
+    <div class="hsep"></div>
+    <div class="hs">
+      <div class="hs-val blue">+38<span style="font-size:11px">%</span></div>
+      <div class="hs-lbl">CASOS RENALES</div>
+    </div>
+    <div class="hsep"></div>
+    <div class="hs">
+      <div class="hs-val blue">148<span style="font-size:11px"> l/s</span></div>
+      <div class="hs-lbl">USO MINERO/DÍA</div>
+    </div>
+    <div class="hsep"></div>
+    <div class="hs">
+      <div class="hs-val warn">4.1<span style="font-size:11px">/7</span></div>
+      <div class="hs-lbl">ACUERDOS CUMPLIDOS</div>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:12px;align-items:center;">
+    <div class="org-badge">FRENTE DE DEFENSA · <span>CUENCA TAMBO</span></div>
+    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:3px;">
+      <div id="clockLabel">CARGANDO...</div>
+      <div class="live-badge"><div class="live-dot"></div>MONITOREO EN VIVO</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ KPI IZQUIERDA ══════════════ -->
+<div class="kpi-col">
+
+  <div class="kpi-item">
+    <div class="kpi-lbl">Arsénico (As) Río</div>
+    <div class="kpi-val r">127<span class="kpi-unit"> ppb</span></div>
+    <div class="kpi-sub">
+      <span class="delta up">▲ LMP ×12.7</span>
+      <span class="kpi-desc">LMP: 10 ppb · DS 004-2017</span>
+    </div>
+  </div>
+
+  <div class="kpi-item">
+    <div class="kpi-lbl">Caudal Ecológico</div>
+    <div class="kpi-val a">1.8<span class="kpi-unit"> m³/s</span></div>
+    <div class="kpi-sub">
+      <span class="delta up">▼ −42%</span>
+      <span class="kpi-desc">Mínimo requerido: 3.1 m³/s</span>
+    </div>
+  </div>
+
+  <div class="kpi-item">
+    <div class="kpi-lbl">Plomo (Pb) Sedim.</div>
+    <div class="kpi-val a">84<span class="kpi-unit"> mg/kg</span></div>
+    <div class="kpi-sub">
+      <span class="delta up">▲ LMP ×1.68</span>
+      <span class="kpi-desc">LMP suelos agrícolas: 50</span>
+    </div>
+  </div>
+
+  <div class="kpi-item">
+    <div class="kpi-lbl">Consumo Minero/día</div>
+    <div class="kpi-val q">148<span class="kpi-unit"> l/s</span></div>
+    <div class="kpi-sub">
+      <span class="delta up">▲ +18%</span>
+      <span class="kpi-desc">Autorizado: 125 l/s · ANA</span>
+    </div>
+  </div>
+
+  <div class="kpi-item">
+    <div class="kpi-lbl">Hectáreas Afectadas</div>
+    <div class="kpi-val a">3,840<span class="kpi-unit"> ha</span></div>
+    <div class="kpi-sub">
+      <span class="delta up">▲ +12%</span>
+      <span class="kpi-desc">Palta, cebolla, arroz</span>
+    </div>
+  </div>
+
+  <div class="kpi-item">
+    <div class="kpi-lbl">Enf. Renales anuales</div>
+    <div class="kpi-val b">312<span class="kpi-unit"> casos</span></div>
+    <div class="kpi-sub">
+      <span class="delta up">▲ +38%</span>
+      <span class="kpi-desc">vs. 226 casos año base 2019</span>
+    </div>
+  </div>
+
+  <div class="kpi-item">
+    <div class="kpi-lbl">Acuerdos Mesa Diálogo</div>
+    <div class="kpi-val g">4.1<span class="kpi-unit">/7</span></div>
+    <div class="kpi-sub">
+      <span class="delta nt">◈ 59%</span>
+      <span class="kpi-desc">2 críticos sin cumplir</span>
+    </div>
+  </div>
+
+</div>
+
+<!-- ══════════════ FILA 2 ══════════════ -->
+
+<!-- GAUGES CALIDAD AGUA -->
+<div class="panel aqua-t" style="grid-column:2;grid-row:2;">
+  <div class="ctl"></div><div class="cbr"></div>
+  <div class="pt">Índices de Calidad del Agua · Puntos de Monitoreo <span class="tag">▶ ICA</span></div>
+  <div class="gauge-row">
+    <div class="gauge-item">
+      <canvas id="g1" width="88" height="88"></canvas>
+      <div class="gauge-lbl">Arsénico<br>127/10 ppb</div>
+      <div class="gauge-sub">×12.7 LMP</div>
+    </div>
+    <div class="gauge-item">
+      <canvas id="g2" width="88" height="88"></canvas>
+      <div class="gauge-lbl">Mercurio<br>4.1/1 ppb</div>
+      <div class="gauge-sub">×4.1 LMP</div>
+    </div>
+    <div class="gauge-item">
+      <canvas id="g3" width="88" height="88"></canvas>
+      <div class="gauge-lbl">pH Río<br>5.2 / ideal 7</div>
+      <div class="gauge-sub">Ácido ↓</div>
+    </div>
+    <div class="gauge-item">
+      <canvas id="g4" width="88" height="88"></canvas>
+      <div class="gauge-lbl">Turbidez<br>NTU 180/5</div>
+      <div class="gauge-sub">×36 LMP</div>
+    </div>
+    <div class="gauge-item">
+      <canvas id="g5" width="88" height="88"></canvas>
+      <div class="gauge-lbl">Ox. Disuelto<br>3.1/≥5 mg/L</div>
+      <div class="gauge-sub">Crítico ↓</div>
+    </div>
+  </div>
+</div>
+
+<!-- CAUDAL TREND 24 MESES -->
+<div class="panel aqua-t" style="grid-column:3;grid-row:2;">
+  <div class="ctl"></div>
+  <div class="pt">Caudal Río Tambo vs. Extracción Minera · 24 Meses <span class="tag">▶ CAUDAL</span></div>
+  <div class="cw"><canvas id="caudalChart"></canvas></div>
+</div>
+
+<!-- METALES PESADOS POR PUNTO -->
+<div class="panel amber-t" style="grid-column:4;grid-row:2;">
+  <div class="ctl"></div>
+  <div class="pt">Metales Pesados por Punto de Monitoreo <span class="tag amber">▶ METALES</span></div>
+  <div class="cw"><canvas id="metalesChart"></canvas></div>
+</div>
+
+<!-- SLA ACUERDOS HORIZONTAL -->
+<div class="panel blue-t" style="grid-column:5;grid-row:2;">
+  <div class="ctl"></div>
+  <div class="pt">Cumplimiento Mesa de Diálogo · Acuerdos <span class="tag blue">▶ ACUERDOS</span></div>
+  <div class="cw"><canvas id="acuerdosChart"></canvas></div>
+</div>
+
+<!-- ══════════════ FILA 3 ══════════════ -->
+
+<!-- DONUT USO AGUA -->
+<div class="panel aqua-t" style="grid-column:2;grid-row:3;">
+  <div class="ctl"></div>
+  <div class="pt">Distribución Uso Hídrico · Cuenca Tambo <span class="tag">● AGUA</span></div>
+  <div style="display:flex;align-items:center;gap:10px;flex:1;min-height:0;">
+    <div style="width:108px;height:108px;position:relative;flex-shrink:0;">
+      <canvas id="donutChart" width="108" height="108"></canvas>
+      <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;">
+        <div style="font-family:'Oswald',monospace;font-size:15px;color:var(--aqua);font-weight:700;line-height:1;">100%</div>
+        <div style="font-family:'Space Mono',monospace;font-size:6px;color:var(--dim);letter-spacing:1px;">CUENCA</div>
+      </div>
+    </div>
+    <div style="flex:1;">
+      <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border);font-size:9.5px;">
+        <span><span class="sdot s-y"></span>Minería</span>
+        <span style="color:var(--amber);font-family:'Oswald',monospace;">38%</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border);font-size:9.5px;">
+        <span><span class="sdot s-b"></span>Agricultura</span>
+        <span style="color:var(--blue);font-family:'Oswald',monospace;">41%</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border);font-size:9.5px;">
+        <span><span class="sdot s-y"></span>Poblacional</span>
+        <span style="color:var(--amber);font-family:'Oswald',monospace;">14%</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:9.5px;">
+        <span><span class="sdot s-g"></span>Ecológico</span>
+        <span style="color:var(--green);font-family:'Oswald',monospace;">7%</span>
+      </div>
+      <div class="pbar-wrap">
+        <div class="pbar-fill" style="background:linear-gradient(90deg,var(--amber),var(--blue));width:38%;"></div>
+      </div>
+      <div style="font-family:'Space Mono',monospace;font-size:6.5px;color:var(--amber);margin-top:3px;letter-spacing:1px;">MINERÍA EXCEDE CONCESIÓN EN +18%</div>
+    </div>
+  </div>
+</div>
+
+<!-- RADAR IMPACTO -->
+<div class="panel green-t" style="grid-column:3;grid-row:3;">
+  <div class="ctl"></div>
+  <div class="pt">Índice de Impacto · Dimensiones Ambientales <span class="tag" style="color:var(--green);">▶ ÍNDICE</span></div>
+  <div class="cw"><canvas id="radarChart"></canvas></div>
+</div>
+
+<!-- SCATTER CORRELACIÓN CAUDAL - ENFERMEDADES -->
+<div class="panel" style="grid-column:4;grid-row:3;">
+  <div class="ctl"></div>
+  <div class="pt">Correlación Caudal vs. Casos de Salud <span class="tag">▶ SALUD</span></div>
+  <div class="cw"><canvas id="scatterChart"></canvas></div>
+</div>
+
+<!-- STACKED AREA PÉRDIDAS AGRÍCOLAS -->
+<div class="panel amber-t" style="grid-column:5;grid-row:3;">
+  <div class="ctl"></div>
+  <div class="pt">Pérdidas Agrícolas por Cultivo · Mensual <span class="tag amber">▶ AGRO</span></div>
+  <div class="cw"><canvas id="stackedChart"></canvas></div>
+</div>
+
+<!-- ══════════════ FILA 4 ══════════════ -->
+
+<!-- TABLA PUNTOS MONITOREO -->
+<div class="panel" style="grid-column:2;grid-row:4;">
+  <div class="ctl"></div>
+  <div class="pt">Estaciones de Monitoreo · Estado ICA <span class="tag">▶ ESTACIONES</span></div>
+  <div style="overflow-y:auto;flex:1;">
+    <table class="mtable">
+      <thead><tr><th>Punto</th><th>Ubicación</th><th>As(ppb)</th><th>pH</th><th>ICA</th><th>●</th></tr></thead>
+      <tbody>
+        <tr><td style="color:var(--aqua);font-family:'Space Mono',monospace;font-size:8px;">T-01</td><td style="color:var(--dim);">Naciente Ubinas</td><td style="color:var(--green);">8</td><td style="color:var(--green);">7.1</td><td style="color:var(--green);">82 / Buena</td><td><span class="sdot s-g"></span></td></tr>
+        <tr><td style="color:var(--aqua);font-family:'Space Mono',monospace;font-size:8px;">T-02</td><td style="color:var(--dim);">Aguas arr. Toquepala</td><td style="color:var(--green);">12</td><td style="color:var(--amber);">6.6</td><td style="color:var(--amber);">61 / Regular</td><td><span class="sdot s-y"></span></td></tr>
+        <tr><td style="color:var(--aqua);font-family:'Space Mono',monospace;font-size:8px;">T-03</td><td style="color:var(--dim);">Descarga mina Quellaveco</td><td style="color:var(--red);">127</td><td style="color:var(--red);">5.2</td><td style="color:var(--red);">18 / Crítica</td><td><span class="sdot s-r"></span></td></tr>
+        <tr><td style="color:var(--aqua);font-family:'Space Mono',monospace;font-size:8px;">T-04</td><td style="color:var(--dim);">Zona agrícola Cocachacra</td><td style="color:var(--red);">98</td><td style="color:var(--red);">5.8</td><td style="color:var(--red);">24 / Crítica</td><td><span class="sdot s-r"></span></td></tr>
+        <tr><td style="color:var(--aqua);font-family:'Space Mono',monospace;font-size:8px;">T-05</td><td style="color:var(--dim);">Captación El Fiscal</td><td style="color:var(--red);">74</td><td style="color:var(--amber);">6.1</td><td style="color:var(--red);">31 / Mala</td><td><span class="sdot s-r"></span></td></tr>
+        <tr><td style="color:var(--aqua);font-family:'Space Mono',monospace;font-size:8px;">T-06</td><td style="color:var(--dim);">Desemboc. Pacífico</td><td style="color:var(--amber);">42</td><td style="color:var(--amber);">6.4</td><td style="color:var(--amber);">48 / Regular</td><td><span class="sdot s-y"></span></td></tr>
+        <tr><td style="color:var(--aqua);font-family:'Space Mono',monospace;font-size:8px;">T-07</td><td style="color:var(--dim);">Afluente La Palca</td><td style="color:var(--red);">112</td><td style="color:var(--red);">5.4</td><td style="color:var(--red);">21 / Crítica</td><td><span class="sdot s-r"></span></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- EVOLUCIÓN ENFERMEDADES -->
+<div class="panel aqua-t" style="grid-column:3;grid-row:4;">
+  <div class="ctl"></div>
+  <div class="pt">Incidencia Enfermedades Vinculadas · Histórico <span class="tag">▶ SALUD PÚBLICA</span></div>
+  <div class="cw"><canvas id="saludChart"></canvas></div>
+</div>
+
+<!-- BARRAS AVANCE COMPROMISOS -->
+<div class="panel green-t" style="grid-column:4;grid-row:4;">
+  <div class="ctl"></div>
+  <div class="pt">Compromisos Empresa Minera · Avance <span class="tag" style="color:var(--green);">▶ COMPROMISOS</span></div>
+  <div style="flex:1;overflow-y:auto;">
+    <div id="commitBars"></div>
+  </div>
+</div>
+
+<!-- MINI CARDS FORECAST -->
+<div class="panel" style="grid-column:5;grid-row:4;">
+  <div class="ctl"></div>
+  <div class="pt">Proyección · Próx. 6 Meses <span class="tag">▶ FORECAST</span></div>
+  <div class="mini-cards">
+    <div class="mini-card">
+      <div class="mc-lbl">Caudal Proy.</div>
+      <div class="mc-val" style="color:var(--amber);">1.4 m³/s</div>
+      <div class="mc-sub">↓ temporada seca</div>
+    </div>
+    <div class="mini-card">
+      <div class="mc-lbl">As esperado</div>
+      <div class="mc-val" style="color:var(--amber);">145 ppb</div>
+      <div class="mc-sub">↑ concentración</div>
+    </div>
+    <div class="mini-card">
+      <div class="mc-lbl">Pérd. Agríc.</div>
+      <div class="mc-val" style="color:var(--green);">S/4.2M</div>
+      <div class="mc-sub">acumulado anual</div>
+    </div>
+    <div class="mini-card">
+      <div class="mc-lbl">Casos Salud</div>
+      <div class="mc-val" style="color:var(--blue);">+52</div>
+      <div class="mc-sub">nuevos estimados</div>
+    </div>
+    <div class="mini-card">
+      <div class="mc-lbl">Ha en Riesgo</div>
+      <div class="mc-val" style="color:var(--aqua);">5,100</div>
+      <div class="mc-sub">si caudal &lt; 1.5</div>
+    </div>
+    <div class="mini-card">
+      <div class="mc-lbl">Acuerd. Venc.</div>
+      <div class="mc-val" style="color:var(--amber);">3</div>
+      <div class="mc-sub">sin plazo cumplido</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════ ALERTAS DERECHA ══════════════ -->
+<div class="alerts-col">
+  <div class="alerts-title">⚡ ALERTAS · CUENCA</div>
+  <div class="alert-item crit"><div class="alert-type">✕ CALIDAD AGUA</div><div class="alert-msg">As en T-03: 127 ppb — 12.7× límite legal</div><div class="alert-time">HOY · Est. Quellaveco</div></div>
+  <div class="alert-item crit"><div class="alert-type">✕ CAUDAL CRÍTICO</div><div class="alert-msg">Caudal 1.8 m³/s — bajo mínimo ecológico 3.1</div><div class="alert-time">HOY · Estación T-03</div></div>
+  <div class="alert-item warn"><div class="alert-type">⚠ CONSUMO MINERO</div><div class="alert-msg">Uso real 148 l/s supera concesión ANA: 125</div><div class="alert-time">SEMANA · ANA Tambo</div></div>
+  <div class="alert-item crit"><div class="alert-type">✕ SALUD PÚBLICA</div><div class="alert-msg">+38% enfermedades renales vs. año base 2019</div><div class="alert-time">2024 · DIRESA Moquegua</div></div>
+  <div class="alert-item warn"><div class="alert-type">⚠ CULTIVOS</div><div class="alert-msg">3,840 ha afectadas — palta y cebolla críticas</div><div class="alert-time">CAMPAÑA · Cocachacra</div></div>
+  <div class="alert-item warn"><div class="alert-type">⚠ COMPROMISOS</div><div class="alert-msg">Acuerdo 5 y 6 de mesa: incumplidos 14 meses</div><div class="alert-time">MESA · Moquegua</div></div>
+  <div class="alert-item info"><div class="alert-type">ℹ MONITOREO</div><div class="alert-msg">ANA realizará inspección sorpresa — 28 feb</div><div class="alert-time">PRÓX. SEMANA</div></div>
+  <div class="alert-item ok"><div class="alert-type">✓ NACIENTE T-01</div><div class="alert-msg">Estación Ubinas: ICA 82 — dentro de norma</div><div class="alert-time">HOY · Naciente</div></div>
+</div>
+
+</div><!-- fin dashboard -->
+
+<script>
+Chart.defaults.color = '#7B8EC8';
+Chart.defaults.font.family = 'DM Sans';
+Chart.defaults.font.size = 8;
+
+// ── RELOJ ──
+setInterval(()=>{
+  const now=new Date();
+  const el=document.getElementById('clockLabel');
+  if(el) el.textContent=`${now.toLocaleDateString('es-PE',{day:'2-digit',month:'short',year:'numeric'})} · ${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+},1000);
+
+// ── GAUGES ── (escala 0-100 representando nivel de peligro)
+function drawGauge(id, pct, color, size=88) {
+  const c=document.getElementById(id); if(!c) return;
+  const ctx=c.getContext('2d');
+  const cx=size/2, cy=size/2+4, r=size/2-8;
+  const sa=Math.PI*0.75, ea=Math.PI*2.25;
+  const va=sa+(ea-sa)*(Math.min(pct,100)/100);
+  ctx.clearRect(0,0,size,size+8);
+  // fondo
+  ctx.beginPath(); ctx.arc(cx,cy,r,sa,ea);
+  ctx.strokeStyle='rgba(30,144,255,0.07)'; ctx.lineWidth=9; ctx.lineCap='round'; ctx.stroke();
+  // ticks
+  for(let i=0;i<=10;i++){
+    const a=sa+(ea-sa)*(i/10);
+    ctx.beginPath();
+    ctx.moveTo(cx+(r-11)*Math.cos(a),cy+(r-11)*Math.sin(a));
+    ctx.lineTo(cx+(r-15)*Math.cos(a),cy+(r-15)*Math.sin(a));
+    ctx.strokeStyle='rgba(30,144,255,0.2)'; ctx.lineWidth=1; ctx.stroke();
+  }
+  // arco valor
+  ctx.shadowBlur=14; ctx.shadowColor=color;
+  ctx.beginPath(); ctx.arc(cx,cy,r,sa,va);
+  ctx.strokeStyle=color; ctx.lineWidth=9; ctx.lineCap='round'; ctx.stroke();
+  ctx.shadowBlur=0;
+  // texto
+  ctx.fillStyle=color; ctx.shadowBlur=8; ctx.shadowColor=color;
+  ctx.font=`bold 13px Oswald`;
+  ctx.textAlign='center'; ctx.textBaseline='middle';
+  ctx.fillText(pct+'%',cx,cy);
+  ctx.shadowBlur=0;
+}
+
+// Gauges: porcentaje de peligro (qué tan lejos está del LMP)
+drawGauge('g1',100,'#EF5350'); // As: crítico
+drawGauge('g2',82,'#FFA726');  // Hg → amber
+drawGauge('g3',63,'#1E90FF');  // pH → blue (contexto técnico)
+drawGauge('g4',97,'#EF5350');  // Turbidez: crítico
+drawGauge('g5',57,'#26A69A');  // OD → teal/green
+
+// ── CAUDAL vs EXTRACCIÓN 24 MESES ──
+const meses24=['Feb23','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic',
+               'Ene24','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic','Feb25'];
+const caudalRio=[4.8,5.1,4.9,4.2,3.8,3.2,2.9,2.7,2.4,3.1,3.6,4.2,4.6,4.9,4.3,3.9,3.4,2.8,2.3,2.0,1.9,2.2,2.6,1.8];
+const extraccionMinera=[1.10,1.12,1.18,1.22,1.28,1.32,1.38,1.41,1.44,1.40,1.36,1.30,1.28,1.32,1.38,1.41,1.45,1.47,1.48,1.48,1.46,1.44,1.45,1.48];
+const caudalMin=new Array(24).fill(3.1);
+
+new Chart(document.getElementById('caudalChart'),{
+  type:'line',
+  data:{labels:meses24,datasets:[
+    {label:'Caudal Río (m³/s)',data:caudalRio,borderColor:'#1E90FF',backgroundColor:'rgba(30,144,255,0.08)',borderWidth:2,pointRadius:1.5,tension:0.4,fill:true,yAxisID:'y'},
+    {label:'Extrac. Minera (m³/s)',data:extraccionMinera,borderColor:'#EF5350',backgroundColor:'rgba(239,83,80,0.06)',borderWidth:2,pointRadius:1.5,tension:0.4,fill:true,yAxisID:'y'},
+    {label:'Mínimo Ecológico',data:caudalMin,borderColor:'rgba(255,167,38,0.6)',borderWidth:1.5,borderDash:[5,4],pointRadius:0,yAxisID:'y'}
+  ]},
+  options:{responsive:true,maintainAspectRatio:false,animation:{duration:2000},
+    plugins:{legend:{display:true,position:'bottom',labels:{font:{size:8},color:'#7B8EC8',boxWidth:12,padding:8}},tooltip:{enabled:true}},
+    scales:{
+      x:{grid:{color:'rgba(30,144,255,0.04)'},ticks:{font:{size:6.5,family:'Space Mono'},color:'#7B8EC8',maxRotation:0,maxTicksLimit:8}},
+      y:{grid:{color:'rgba(30,144,255,0.04)'},ticks:{font:{size:7},color:'#7B8EC8',callback:v=>v.toFixed(1)+'m³/s'}}
+    }}
+});
+
+// ── METALES PESADOS POR PUNTO ──
+new Chart(document.getElementById('metalesChart'),{
+  type:'bar',
+  data:{labels:['T-01','T-02','T-03','T-04','T-05','T-06','T-07'],
+    datasets:[
+      {label:'Arsénico (ppb)',data:[8,12,127,98,74,42,112],backgroundColor:'rgba(239,83,80,0.7)',borderColor:'#EF5350',borderWidth:1,borderRadius:2},
+      {label:'Plomo (ppb)',data:[3,8,84,61,48,22,71],backgroundColor:'rgba(255,167,38,0.55)',borderColor:'#FFA726',borderWidth:1,borderRadius:2},
+      {label:'Mercurio (ppb)',data:[0.2,0.6,4.1,3.2,2.4,1.1,3.8],backgroundColor:'rgba(0,188,212,0.45)',borderColor:'#00BCD4',borderWidth:1,borderRadius:2}
+    ]},
+  options:{responsive:true,maintainAspectRatio:false,animation:{duration:1500},
+    plugins:{legend:{display:true,position:'bottom',labels:{font:{size:8},color:'#7B8EC8',boxWidth:10,padding:6}},tooltip:{enabled:true}},
+    scales:{
+      x:{grid:{display:false},ticks:{font:{size:7.5,family:'Space Mono'},color:'#7B8EC8'}},
+      y:{grid:{color:'rgba(30,144,255,0.04)'},ticks:{font:{size:7},color:'#7B8EC8',callback:v=>v+' ppb'}}
+    }}
+});
+
+// ── ACUERDOS MESA DIÁLOGO HORIZONTAL ──
+new Chart(document.getElementById('acuerdosChart'),{
+  type:'bar',
+  data:{labels:['A1: Fondo compensación','A2: Planta trat. aguas','A3: Monitoreo independ.','A4: Caudal ecológico','A5: Reforest. ribera','A6: Salud comunidades','A7: Cierre progresivo'],
+    datasets:[{
+      data:[95,82,78,55,40,12,8],
+      backgroundColor:['rgba(38,166,154,0.7)','rgba(38,166,154,0.7)','rgba(38,166,154,0.7)','rgba(255,167,38,0.7)','rgba(255,167,38,0.7)','rgba(239,83,80,0.7)','rgba(239,83,80,0.7)'],
+      borderRadius:3
+    }]},
+  options:{indexAxis:'y',responsive:true,maintainAspectRatio:false,animation:{duration:1800},
+    plugins:{legend:{display:false},tooltip:{enabled:true}},
+    scales:{
+      x:{grid:{color:'rgba(30,144,255,0.04)'},max:100,ticks:{font:{size:7},color:'#7B8EC8',callback:v=>v+'%'}},
+      y:{grid:{display:false},ticks:{font:{size:7,family:'Space Mono'},color:'#7B8EC8'}}
+    }}
+});
+
+// ── DONUT USO HÍDRICO ──
+new Chart(document.getElementById('donutChart'),{
+  type:'doughnut',
+  data:{datasets:[{
+    data:[38,41,14,7],
+    backgroundColor:['rgba(255,167,38,0.82)','rgba(30,144,255,0.75)','rgba(0,188,212,0.8)','rgba(38,166,154,0.8)'],
+    borderColor:['#FFA726','#1E90FF','#00BCD4','#26A69A'],
+    borderWidth:1.5
+  }]},
+  options:{responsive:false,cutout:'68%',animation:{duration:1800},plugins:{legend:{display:false},tooltip:{enabled:false}}}
+});
+
+// ── RADAR IMPACTO AMBIENTAL ──
+new Chart(document.getElementById('radarChart'),{
+  type:'radar',
+  data:{
+    labels:['Calidad Agua','Caudal Río','Suelos Agríc.','Salud Pública','Biodiversidad','Compromisos'],
+    datasets:[
+      {label:'Impacto Real',data:[95,74,68,72,81,41],backgroundColor:'rgba(38,166,154,0.12)',borderColor:'#26A69A',borderWidth:2,pointBackgroundColor:'#26A69A',pointRadius:3},
+      {label:'Límite Aceptable',data:[30,30,30,25,30,80],backgroundColor:'rgba(30,144,255,0.04)',borderColor:'rgba(30,144,255,0.4)',borderWidth:1,borderDash:[4,3],pointRadius:0}
+    ]},
+  options:{responsive:true,maintainAspectRatio:false,animation:{duration:2000},
+    plugins:{legend:{display:true,position:'bottom',labels:{font:{size:8},color:'#7B8EC8',boxWidth:10,padding:6}},tooltip:{enabled:true}},
+    scales:{r:{grid:{color:'rgba(30,144,255,0.12)'},angleLines:{color:'rgba(30,144,255,0.12)'},
+      pointLabels:{font:{size:8,family:'Space Mono'},color:'#7B8EC8'},ticks:{display:false},min:0,max:100}}}
+});
+
+// ── SCATTER CAUDAL vs CASOS SALUD ──
+const scatterDat=[
+  {x:4.8,y:41},{x:5.1,y:38},{x:4.2,y:58},{x:3.8,y:67},{x:3.2,y:89},
+  {x:2.9,y:102},{x:2.7,y:118},{x:2.4,y:131},{x:3.1,y:94},{x:3.6,y:78},
+  {x:4.6,y:44},{x:4.9,y:39},{x:3.4,y:85},{x:2.8,y:114},{x:2.3,y:138},
+  {x:2.0,y:148},{x:1.9,y:154},{x:2.6,y:122},{x:1.8,y:162}
+];
+new Chart(document.getElementById('scatterChart'),{
+  type:'scatter',
+  data:{datasets:[
+    {data:scatterDat,backgroundColor:'rgba(0,188,212,0.55)',borderColor:'rgba(0,188,212,0.9)',pointRadius:4,pointHoverRadius:6,label:'Mes observado'},
+    {data:[{x:3.1,y:70},{x:3.1,y:200}],type:'line',borderColor:'rgba(255,167,38,0.5)',borderWidth:1.5,borderDash:[5,4],pointRadius:0,label:'Umbral mín.ecol.'}
+  ]},
+  options:{responsive:true,maintainAspectRatio:false,
+    plugins:{legend:{display:false},tooltip:{enabled:true}},
+    scales:{
+      x:{grid:{color:'rgba(30,144,255,0.04)'},ticks:{font:{size:7},color:'#7B8EC8',callback:v=>v+' m³/s'},title:{display:true,text:'Caudal Río (m³/s)',color:'#7B8EC8',font:{size:7,family:'Space Mono'}}},
+      y:{grid:{color:'rgba(30,144,255,0.04)'},ticks:{font:{size:7},color:'#7B8EC8'},title:{display:true,text:'Casos enf./trimestre',color:'#7B8EC8',font:{size:7,family:'Space Mono'}}}
+    }}
+});
+
+// ── STACKED PÉRDIDAS AGRÍCOLAS ──
+const meses12=['Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic','Ene','Feb'];
+new Chart(document.getElementById('stackedChart'),{
+  type:'line',
+  data:{labels:meses12,datasets:[
+    {label:'Palta (S/ mil)',data:[120,145,168,192,210,240,225,260,242,280,265,310],backgroundColor:'rgba(38,166,154,0.28)',borderColor:'rgba(38,166,154,0.85)',borderWidth:1.5,fill:true,tension:0.4},
+    {label:'Cebolla (S/ mil)',data:[80,95,110,128,140,158,145,172,160,185,170,195],backgroundColor:'rgba(255,167,38,0.22)',borderColor:'rgba(255,167,38,0.8)',borderWidth:1.5,fill:true,tension:0.4},
+    {label:'Arroz (S/ mil)',data:[60,72,85,96,108,122,115,132,124,145,138,155],backgroundColor:'rgba(30,144,255,0.18)',borderColor:'rgba(30,144,255,0.7)',borderWidth:1.5,fill:true,tension:0.4}
+  ]},
+  options:{responsive:true,maintainAspectRatio:false,animation:{duration:1600},
+    plugins:{legend:{display:true,position:'bottom',labels:{font:{size:8},color:'#7B8EC8',boxWidth:10,padding:6}},tooltip:{enabled:true}},
+    scales:{
+      x:{grid:{color:'rgba(30,144,255,0.03)'},ticks:{font:{size:7,family:'Space Mono'},color:'#7B8EC8'}},
+      y:{stacked:true,grid:{color:'rgba(30,144,255,0.03)'},ticks:{font:{size:7},color:'#7B8EC8',callback:v=>v+'k'}}
+    }}
+});
+
+// ── EVOLUCIÓN SALUD PÚBLICA ──
+new Chart(document.getElementById('saludChart'),{
+  type:'line',
+  data:{labels:['2018','2019','2020','2021','2022','2023','2024','2025*'],
+    datasets:[
+      {label:'Enf. renales',data:[168,226,241,258,274,291,312,338],borderColor:'#1E90FF',backgroundColor:'rgba(30,144,255,0.09)',borderWidth:2,pointRadius:3,tension:0.4,fill:true},
+      {label:'Dermatitis',data:[88,104,118,134,149,168,187,204],borderColor:'#FFA726',backgroundColor:'rgba(255,167,38,0.07)',borderWidth:2,pointRadius:3,tension:0.4,fill:true},
+      {label:'Intox. metales',data:[12,18,24,31,38,44,52,61],borderColor:'#00BCD4',backgroundColor:'rgba(0,188,212,0.07)',borderWidth:2,pointRadius:3,tension:0.4,fill:true}
+    ]},
+  options:{responsive:true,maintainAspectRatio:false,
+    plugins:{legend:{display:true,position:'bottom',labels:{font:{size:8},color:'#7B8EC8',boxWidth:10,padding:6}},tooltip:{enabled:true}},
+    scales:{
+      x:{grid:{color:'rgba(30,144,255,0.03)'},ticks:{font:{size:7.5,family:'Space Mono'},color:'#7B8EC8'}},
+      y:{grid:{color:'rgba(30,144,255,0.03)'},ticks:{font:{size:7},color:'#7B8EC8',callback:v=>v+' casos'}}
+    }}
+});
+
+// ── BARRAS COMPROMISOS ──
+const commits=[
+  {label:'Fondo de compensación comunal',pct:95,color:'#26A69A'},
+  {label:'Planta tratamiento aguas residuales',pct:82,color:'#26A69A'},
+  {label:'Sistema monitoreo independiente',pct:78,color:'#1E90FF'},
+  {label:'Garantía caudal ecológico 3.1 m³/s',pct:55,color:'#FFA726'},
+  {label:'Reforestación ribera 200 ha',pct:40,color:'#FFA726'},
+  {label:'Atención salud comunidades',pct:12,color:'#EF5350'},
+  {label:'Plan cierre progresivo',pct:8,color:'#EF5350'},
+];
+const cb=document.getElementById('commitBars');
+if(cb){
+  commits.forEach(it=>{
+    cb.innerHTML+=`
+    <div style="margin-bottom:7px;">
+      <div style="display:flex;justify-content:space-between;font-size:8.5px;margin-bottom:2px;">
+        <span style="color:var(--dim);font-family:'Space Mono',monospace;font-size:7px;letter-spacing:0.5px;">${it.label}</span>
+        <span style="color:${it.color};font-family:'Oswald',monospace;font-size:10px;">${it.pct}%</span>
+      </div>
+      <div style="height:5px;background:rgba(255,255,255,0.04);border-radius:2px;overflow:hidden;">
+        <div style="height:100%;width:${it.pct}%;background:${it.color};border-radius:2px;box-shadow:0 0 6px ${it.color};transition:width 1.5s ease;"></div>
+      </div>
+    </div>`;
+  });
+}
+</script>
+</body>
+</html>
